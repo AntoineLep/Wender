@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Socket IO Test</title>
+  <link href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" rel="stylesheet" />
+  <script type="text/javascript" src="https://maps.google.com/maps/api/js?key=AIzaSyAmtNMJQqB2l5H9cNUWglWS5jpEF0pvt6E"></script>
+  <script
+        src="https://code.jquery.com/jquery-3.1.1.js"
+        integrity="sha256-16cdPddA6VdVInumRGo6IbivbERE8p7CQR3HzTBuELA="
+        crossorigin="anonymous"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script type="text/javascript">
+    $(function () {
+
+      let socket = null;
+      let userToken = null;
+      let count = 0;
+      let connected = false;
+      let positions = [
+        {latitude: 48.8876058, longitude: 2.3275961},
+        {latitude: 48.887535, longitude: 2.325593},
+        {latitude: 48.883640, longitude: 2.327363},
+        {latitude: 48.879868, longitude: 2.327009},
+        {latitude: 48.868133, longitude: 2.313362},
+        {latitude: 48.873937, longitude: 2.295030},
+        {latitude: 48.884966, longitude: 2.332252},
+        {latitude: 48.888065, longitude: 2.329882}
+      ]
+
+      var markers = {};
+      let currentPosition = 0;
+      let gpsStarted = false;
+
+
+      initialize();
+
+      google.maps.event.addListenerOnce(map, 'idle', function(){ //Wait until map is ready
+          main();
+      });
+
+      //first function to be called : init map fields
+      function initialize() {
+
+          map = new google.maps.Map($('#map')[0], {
+              zoom: 13,
+              center: {lat: 48.8876058, lng: 2.3275961},
+              mapTypeId: google.maps.MapTypeId.ROADMAP
+          });
+      }
+
+      function main() {
+        let bounds = new google.maps.LatLngBounds();
+
+        function addElementToList(element) {
+          $('#event-list').append('<li class="list-group-item">' + element + '</li>');
+          count++;
+          if(count > 10) {
+            $('#event-list li:first-child').remove();
+          }
+        }
+
+        function move() {
+          if(gpsStarted) {
+
+            myPosition = positions[currentPosition];
+            socket.emit('update-position', myPosition);
+
+            if(markers.hasOwnProperty('me')) {
+              markers['me'].setPosition(new google.maps.LatLng(myPosition.latitude, myPosition.longitude));
+            } else {
+               markers['me'] = new google.maps.Marker({
+                position: new google.maps.LatLng(myPosition.latitude, myPosition.longitude),
+                label: 'me',
+                map: map
+               });
+            }
+
+            addElementToList('update my location :' + JSON.stringify(positions[currentPosition]));
+            currentPosition = (currentPosition == positions.length -1) ? 0 : currentPosition + 1;
+            setTimeout(move, 5000);
+          }
+        }
+
+        $('#connect').on('click', () => {
+          if(!connected) {
+            userToken = $('#token').val();
+            socket = io.connect('https://192.168.1.11');
+
+            socket.on('connect', () => {
+              socket.emit('authenticate', {token: userToken})
+              .on('authenticated', () => {
+                addElementToList('Authenticated');
+                connected = true;
+
+                socket.on('friend-update-position', (friendPosition) => {
+
+                  if(markers.hasOwnProperty('id' + friendPosition.id)) {
+                    markers['id' + friendPosition.id].setPosition(new google.maps.LatLng(friendPosition.latitude, friendPosition.longitude));
+                  } else {
+                     markers['id' + friendPosition.id] = new google.maps.Marker({
+                      position: new google.maps.LatLng(friendPosition.latitude, friendPosition.longitude),
+                      label: friendPosition.id.toString(),
+                      map: map
+                     });
+                  }
+
+                  addElementToList('received a friend position :' + JSON.stringify(friendPosition));
+                })
+              })
+            });
+          }
+
+          $('#start-moving').on('click', () => {
+            if(connected && !gpsStarted) {
+              gpsStarted = true;
+              move();
+            }
+          });
+
+          $('#stop-moving').on('click', () => {
+            if(connected && gpsStarted) {
+              gpsStarted = false;
+            }
+          });
+        });
+      }
+    });
+  </script>
+</head>
+<body>
+  <div>
+    <h2>Wender is back!</h2>
+    <p>Token: <input type="text" size="50" name="token" id="token" /><button type="button" id="connect">connect</button></p>
+    <p><button type="button" id="start-moving">Start moving</button><button type="button" id="stop-moving">Stop moving</button></p>
+  </div>
+  <div class="row">
+    <div id="map" class="col col-xs-7" style="height: 600px;"></div>
+    <div class="col col-xs-5">
+      <ul class="list-group" id="event-list">
+      </ul>
+  </div>
+  </div>
+  <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+</body>
+</html>
